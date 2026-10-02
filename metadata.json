@@ -1,0 +1,6 @@
+{
+  "name": "Misi Rumahku: Hak dan Kewajibanku",
+  "description": "Media pembelajaran interaktif Pendidikan Pancasila Kelas III SD tentang materi Hak dan Kewajiban Anak di Rumah melalui eksplorasi denah rumah interaktif.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
