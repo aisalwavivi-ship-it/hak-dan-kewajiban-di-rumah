@@ -21,6 +21,7 @@ export const ASSETS = {
   houseTopdownMap: '/src/assets/images/house_topdown_adventure_map_1790946397252.jpg',
   situationBedMaking: '/src/assets/images/situation_bedroom_morning_1790946411068.jpg',
   situationFamilyAffection: '/src/assets/images/situation_family_affection_1790946422199.jpg',
+  situationShoeRackMorning: '/src/assets/images/shoes_livingroom_morning_1790953182767.jpg',
 };
 
 export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
@@ -201,6 +202,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           code: 'A',
           title: 'Merapikan Sandal & Sepatu di Rak Depan',
           description: 'Anak menata sepatu dan sandal keluarganya agar tersusun rapi di rak pintu masuk.',
+          imageSrc: ASSETS.situationShoeRackMorning,
           type: 'kewajiban',
           visualPlaceholder: {
             themeColor: 'bg-emerald-100 text-emerald-700',
