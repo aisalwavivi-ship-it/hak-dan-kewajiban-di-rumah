@@ -21,6 +21,35 @@ export const ASSETS = {
   houseTopdownMap: '/src/assets/images/house_topdown_adventure_map_1790946397252.jpg',
   situationBedMaking: '/src/assets/images/situation_bedroom_morning_1790946411068.jpg',
   situationFamilyAffection: '/src/assets/images/situation_family_affection_1790946422199.jpg',
+  situationTidyingShoes: '/src/assets/images/tidying_shoes_3d_1790999464941.jpg',
+  situationTidyingShoesRealistic: '/src/assets/images/tidying_family_shoes_1790999252192.jpg',
+  situationComfortableHome: '/src/assets/images/comfortable_safe_home_1790999641854.jpg',
+  situationAskPermission: '/src/assets/images/asking_mother_permission_1791000058154.jpg',
+  situationPlayTime: '/src/assets/images/playing_with_friends_1791000346155.jpg',
+  situationListenAdvice: '/src/assets/images/listening_parents_advice_1791000821727.jpg',
+  situationBedroomRest: '/src/assets/images/comfortable_bedroom_rest_1791001070950.jpg',
+  situationSchoolBagPrep: '/src/assets/images/preparing_school_bag_1791012464699.jpg',
+  situationLaundryBasket: '/src/assets/images/putting_dirty_clothes_1791012977875.jpg',
+  situationCleanClothes: '/src/assets/images/clean_clothes_provided_1791013168454.jpg',
+  situationStudyGuidance: '/src/assets/images/parent_study_guidance_1791013236116.jpg',
+  situationCarryingDishes: '/src/assets/images/carrying_dirty_dishes_1791013356350.jpg',
+  situationNutritiousBreakfast: '/src/assets/images/healthy_breakfast_served_1791013439173.jpg',
+  situationWipingTable: '/src/assets/images/wiping_dining_table_1791013610466.jpg',
+  situationPeacefulLunch: '/src/assets/images/family_peaceful_lunch_1791013806837.jpg',
+  situationFinishFood: '/src/assets/images/finish_eating_food_1791014226877.jpg',
+  situationCleanWaterFruit: '/src/assets/images/clean_water_fruit_1791014317755.jpg',
+  situationTurnOffTap: '/src/assets/images/turn_off_water_tap_1791014472821.jpg',
+  situationCleanWaterAccess: '/src/assets/images/fresh_clean_water_face_1791014632342.jpg',
+  situationHangingTowel: '/src/assets/images/hanging_wet_towel_1791014694986.jpg',
+  situationSafeSoap: '/src/assets/images/provided_safe_soap_1791014953168.jpg',
+  situationBrushingTeeth: '/src/assets/images/brushing_teeth_night_1791015264182.jpg',
+  situationMedicalCare: '/src/assets/images/caring_sick_child_1791015385139.jpg',
+  situationWateringPlants: '/src/assets/images/watering_flower_garden_1791015790885.jpg',
+  situationTidyToys: '/src/assets/images/tidy_toys_bicycle_1791016014534.jpg',
+  situationPlayWithFriends: '/src/assets/images/playing_with_friends_1791016154637.jpg',
+  situationFreshAirGarden: '/src/assets/images/fresh_garden_jog_1791016357518.jpg',
+  situationClosingGate: '/src/assets/images/closing_front_gate_1791016499549.jpg',
+  situationSafeHome: '/src/assets/images/safe_peaceful_home_1791016598691.jpg',
 };
 
 export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
@@ -80,7 +109,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Tempat Tidur Bersih & Waktu Istirahat',
           description: 'Anak tidur nyenyak di kamar yang aman, hangat, dan nyaman berkat fasilitas dari orang tua.',
           type: 'hak',
-          imageSrc: undefined, // Menggunakan visual placeholder ramah anak
+          imageSrc: ASSETS.situationBedroomRest,
           visualPlaceholder: {
             themeColor: 'bg-indigo-100 text-indigo-700',
             iconEmoji: '🌙',
@@ -100,6 +129,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menaruh Baju Kotor ke Keranjang Cucian',
           description: 'Anak mengganti seragam sekolah dan langsung menaruh baju kotor ke tempatnya tanpa melempar sembarangan.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationLaundryBasket,
           visualPlaceholder: {
             themeColor: 'bg-emerald-100 text-emerald-700',
             iconEmoji: '👕',
@@ -115,6 +145,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Pakaian Bersih & Layak Pakai',
           description: 'Orang tua menyediakan pakaian bersih, wangi, dan rapi yang siap dikenakan oleh anak.',
           type: 'hak',
+          imageSrc: ASSETS.situationCleanClothes,
           visualPlaceholder: {
             themeColor: 'bg-sky-100 text-sky-700',
             iconEmoji: '👔',
@@ -134,6 +165,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Belajar & Menyiapkan Buku Pelajaran Besok',
           description: 'Anak memeriksa jadwal pelajaran dan memasukkan buku serta alat tulis ke dalam tas sekolah dengan teliti.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationSchoolBagPrep,
           visualPlaceholder: {
             themeColor: 'bg-amber-100 text-amber-700',
             iconEmoji: '📚',
@@ -149,6 +181,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Didampingi Orang Tua Saat Belajar di Rumah',
           description: 'Ibu dan Ayah dengan sabar menemani dan membimbing anak saat menghadapi materi pelajaran yang sulit.',
           type: 'hak',
+          imageSrc: ASSETS.situationStudyGuidance,
           visualPlaceholder: {
             themeColor: 'bg-rose-100 text-rose-700',
             iconEmoji: '👨‍👩‍👦',
@@ -202,6 +235,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Merapikan Sandal & Sepatu di Rak Depan',
           description: 'Anak menata sepatu dan sandal keluarganya agar tersusun rapi di rak pintu masuk.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationTidyingShoes,
           visualPlaceholder: {
             themeColor: 'bg-emerald-100 text-emerald-700',
             iconEmoji: '👟',
@@ -217,6 +251,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Tinggal di Rumah yang Bersih & Nyaman',
           description: 'Anak merasakan kenyamanan tinggal di rumah yang bersih, terlindung dari panas dan hujan.',
           type: 'hak',
+          imageSrc: ASSETS.situationComfortableHome,
           visualPlaceholder: {
             themeColor: 'bg-teal-100 text-teal-700',
             iconEmoji: '🏡',
@@ -236,6 +271,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Meminta Izin Kepada Orang Tua Sebelum Pergi',
           description: 'Anak mencium tangan ibu dan meminta izin secara sopan sebelum keluar rumah untuk bermain.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationAskPermission,
           visualPlaceholder: {
             themeColor: 'bg-amber-100 text-amber-700',
             iconEmoji: '🤝',
@@ -251,6 +287,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Waktu Bermain Setelah Rumah Rapi',
           description: 'Anak bergembira bermain bersama teman-temannya setelah tugas rumahnya selesai dikerjakan.',
           type: 'hak',
+          imageSrc: ASSETS.situationPlayTime,
           visualPlaceholder: {
             themeColor: 'bg-cyan-100 text-cyan-700',
             iconEmoji: '⚽',
@@ -270,6 +307,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendengarkan Nasihat Baik dari Orang Tua',
           description: 'Anak duduk tenang dan mendengarkan petuah serta nasihat yang disampaikan oleh ayah dan ibu.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationListenAdvice,
           visualPlaceholder: {
             themeColor: 'bg-lime-100 text-lime-700',
             iconEmoji: '👂',
@@ -339,6 +377,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Membawa Piring & Gelas Kotor ke Wastafel',
           description: 'Setelah selesai sarapan, anak membawa piring dan sendok kotornya sendiri ke tempat cuci piring.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationCarryingDishes,
           visualPlaceholder: {
             themeColor: 'bg-orange-100 text-orange-700',
             iconEmoji: '🍽️',
@@ -354,6 +393,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Makanan Bergizi & Sarapan Sehat',
           description: 'Orang tua menyiapkan sarapan pagi yang lezat dan bergizi agar tubuh anak berenergi untuk belajar.',
           type: 'hak',
+          imageSrc: ASSETS.situationNutritiousBreakfast,
           visualPlaceholder: {
             themeColor: 'bg-amber-100 text-amber-700',
             iconEmoji: '🥛',
@@ -373,6 +413,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Membantu Mengelap Meja Makan Bersama Ibu',
           description: 'Anak mengambil kain lap bersih dan membantu mengusap meja makan agar bersih dari tumpahan kuah.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationWipingTable,
           visualPlaceholder: {
             themeColor: 'bg-yellow-100 text-yellow-800',
             iconEmoji: '🧽',
@@ -388,6 +429,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Makan Bersama dengan Tenang & Penuh Suka Cita',
           description: 'Anak menikmati santap siang bersama keluarga dalam suasana rukun, aman, dan tanpa rasa takut.',
           type: 'hak',
+          imageSrc: ASSETS.situationPeacefulLunch,
           visualPlaceholder: {
             themeColor: 'bg-emerald-100 text-emerald-700',
             iconEmoji: '🥗',
@@ -407,6 +449,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menghabiskan Makanan Tanpa Bersisa & Tidak Membuangnya',
           description: 'Anak mengambil makanan secukupnya dan menghabiskannya sebagai wujud rasa syukur atas rezeki.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationFinishFood,
           visualPlaceholder: {
             themeColor: 'bg-amber-100 text-amber-700',
             iconEmoji: '🍚',
@@ -422,6 +465,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Diberi Air Minum Bersih & Buah Segar',
           description: 'Orang tua menyediakan air matang yang bersih serta buah-buahan segar penambah vitamin.',
           type: 'hak',
+          imageSrc: ASSETS.situationCleanWaterFruit,
           visualPlaceholder: {
             themeColor: 'bg-sky-100 text-sky-700',
             iconEmoji: '🍎',
@@ -475,6 +519,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mematikan Kran Air Setelah Bak Mandi Penuh',
           description: 'Anak segera memutar dan menutup kran air dengan rapat agar air bersih tidak tumpah terbuang sia-sia.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationTurnOffTap,
           visualPlaceholder: {
             themeColor: 'bg-cyan-100 text-cyan-700',
             iconEmoji: '🚰',
@@ -490,6 +535,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Akses Air Bersih untuk Mandi',
           description: 'Anak dapat menikmati air bersih yang mengalir lancar untuk membersihkan badan dan mencuci muka.',
           type: 'hak',
+          imageSrc: ASSETS.situationCleanWaterAccess,
           visualPlaceholder: {
             themeColor: 'bg-blue-100 text-blue-700',
             iconEmoji: '💧',
@@ -509,6 +555,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menggantung Handuk Basah pada Tempat Jemuran',
           description: 'Setelah mengelap tangan dan kaki, anak menggantung handuk dengan rapi agar tidak lembap dan berjamur.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationHangingTowel,
           visualPlaceholder: {
             themeColor: 'bg-teal-100 text-teal-700',
             iconEmoji: '🧺',
@@ -524,6 +571,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Disediakan Sabun Cuci Tangan & Sampo yang Aman',
           description: 'Orang tua menyediakan sabun mandi, sabun cuci tangan, dan sampo yang lembut dan aman bagi anak.',
           type: 'hak',
+          imageSrc: ASSETS.situationSafeSoap,
           visualPlaceholder: {
             themeColor: 'bg-sky-100 text-sky-700',
             iconEmoji: '🧼',
@@ -543,6 +591,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menyikat Gigi Secara Bersih Sebelum Tidur Malam',
           description: 'Anak dengan disiplin menyikat gigi selama dua menit dengan pasta gigi agar giginya tidak berlubang.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationBrushingTeeth,
           visualPlaceholder: {
             themeColor: 'bg-indigo-100 text-indigo-700',
             iconEmoji: '🪥',
@@ -558,6 +607,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mendapatkan Pelayanan Kesehatan & Pengobatan Saat Sakit',
           description: 'Bunda memeriksa kondisi anak dan memberikan obat bila anak merasa sakit atau kurang enak badan.',
           type: 'hak',
+          imageSrc: ASSETS.situationMedicalCare,
           visualPlaceholder: {
             themeColor: 'bg-rose-100 text-rose-700',
             iconEmoji: '🩹',
@@ -611,6 +661,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menyiram Tanaman Bunga di Halaman Rumah',
           description: 'Anak membawa gembor air dan menyirami pot tanaman bunga ibu agar tumbuh subur dan tidak layu.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationWateringPlants,
           visualPlaceholder: {
             themeColor: 'bg-lime-100 text-lime-700',
             iconEmoji: '🌱',
@@ -626,6 +677,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menikmati Udara Segar & Pemandangan Indah',
           description: 'Anak dapat berlari santai dan menghirup udara pagi yang bersih bebas dari polusi berbahaya.',
           type: 'hak',
+          imageSrc: ASSETS.situationFreshAirGarden,
           visualPlaceholder: {
             themeColor: 'bg-emerald-100 text-emerald-700',
             iconEmoji: '🌸',
@@ -645,6 +697,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Menaruh Kembali Mainan & Sepeda ke Tempatnya',
           description: 'Setelah selesai bermain, anak memasukkan bola dan menaruh sepedanya dengan rapi di teras rumah.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationTidyToys,
           visualPlaceholder: {
             themeColor: 'bg-amber-100 text-amber-700',
             iconEmoji: '🚲',
@@ -660,6 +713,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Bermain dengan Gembira Bersama Teman Sebaya',
           description: 'Anak tertawa ceria bermain bola dan kejar-kejaran bersama sahabat-sahabatnya di halaman yang aman.',
           type: 'hak',
+          imageSrc: ASSETS.situationPlayWithFriends,
           visualPlaceholder: {
             themeColor: 'bg-sky-100 text-sky-700',
             iconEmoji: '🎈',
@@ -679,6 +733,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Mengunci Pagar Halaman Sebelum Malam Larut',
           description: 'Anak mengingatkan atau membantu menutup selot pagar halaman depan rumah bersama ayah.',
           type: 'kewajiban',
+          imageSrc: ASSETS.situationClosingGate,
           visualPlaceholder: {
             themeColor: 'bg-slate-100 text-slate-700',
             iconEmoji: '🔒',
@@ -694,6 +749,7 @@ export const HOUSE_ROOMS: Record<RoomId, RoomData> = {
           title: 'Tinggal di Lingkungan yang Aman & Tenteram',
           description: 'Anak tidur dengan tenang di rumah tanpa ada rasa takut karena lingkungan dijaga dengan baik oleh keluarga.',
           type: 'hak',
+          imageSrc: ASSETS.situationSafeHome,
           visualPlaceholder: {
             themeColor: 'bg-indigo-100 text-indigo-700',
             iconEmoji: '🛡️',
