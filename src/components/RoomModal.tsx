@@ -180,6 +180,14 @@ export const RoomModal: React.FC<RoomModalProps> = ({
             <span className="hidden xs:inline">Kembali ke Peta</span>
           </button>
 
+          {room.image3D && (
+            <img
+              src={room.image3D}
+              alt={room.name}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl object-cover border-2 border-amber-300 shadow-xs shrink-0 hidden sm:block"
+            />
+          )}
+
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] sm:text-xs uppercase tracking-wider font-extrabold text-amber-700">
@@ -282,11 +290,11 @@ export const RoomModal: React.FC<RoomModalProps> = ({
         </div>
 
         {/* Teacher Instruction Header Banner */}
-        <div className="bg-amber-100/80 border-2 border-amber-300/80 rounded-2xl p-4 sm:p-5 flex items-start gap-3 sm:gap-4 shadow-sm">
+        <div className="bg-amber-100/80 border-2 border-amber-300/80 rounded-2xl p-3.5 sm:p-4.5 flex items-center gap-3 sm:gap-4 shadow-sm">
           <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-2xl shrink-0 shadow-xs">
             👩‍🏫
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="text-[11px] font-bold text-amber-800 uppercase tracking-wider mb-0.5">
               Instruksi Pengamatan Guru:
             </div>
@@ -294,9 +302,6 @@ export const RoomModal: React.FC<RoomModalProps> = ({
               {activeStep === 'A'
                 ? `“Amati gambar Situasi A di ${room.name}! Menurutmu, apakah ini menunjukkan HAK atau KEWAJIBAN anak?”`
                 : `“Bagus! Sekarang amati gambar Situasi B di ${room.name}! Apakah ini menunjukkan HAK atau KEWAJIBAN anak?”`}
-            </p>
-            <p className="text-xs text-slate-600 mt-1">
-              Petunjuk Belajar: <strong>Kewajiban</strong> adalah sesuatu yang harus kita lakukan. <strong>Hak</strong> adalah sesuatu yang harus kita terima.
             </p>
           </div>
         </div>
@@ -439,15 +444,15 @@ export const RoomModal: React.FC<RoomModalProps> = ({
             {popupFeedback.isCorrect ? (
               /* ================= POP-UP JAWABAN BENAR ================= */
               <>
-                <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-3xl mb-3 shadow-xs">
-                  🎉
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-4xl mb-3 shadow-xs font-black">
+                  ✓
                 </div>
 
                 <h3 className="font-fun text-xl sm:text-2xl font-bold text-slate-900 mb-2">
-                  Hebat! Jawabanmu Tepat!
+                  Hebat! Jawabanmu tepat!
                 </h3>
 
-                <p className="text-sm sm:text-base text-slate-700 leading-relaxed mb-6">
+                <p className="text-sm sm:text-base text-slate-700 leading-relaxed mb-6 font-medium">
                   {popupFeedback.step === 'A' ? situationA.explanation : situationB.explanation}
                 </p>
 
@@ -456,7 +461,7 @@ export const RoomModal: React.FC<RoomModalProps> = ({
                     onClick={handleNextStepFromPopup}
                     className="w-full py-3.5 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-fun font-bold text-base rounded-2xl shadow-lg transition-transform hover:scale-102 flex items-center justify-center gap-2 cursor-pointer animate-pulse-soft"
                   >
-                    <span>Lanjut ke Situasi B</span>
+                    <span>Lanjutkan</span>
                     <ArrowRight className="w-5 h-5" />
                   </button>
                 ) : (
@@ -464,30 +469,25 @@ export const RoomModal: React.FC<RoomModalProps> = ({
                     onClick={handleFinishFromPopup}
                     className="w-full py-3.5 px-6 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-fun font-bold text-base rounded-2xl shadow-lg transition-transform hover:scale-102 flex items-center justify-center gap-2.5 cursor-pointer animate-pulse-soft"
                   >
-                    <BookOpen className="w-5 h-5" />
-                    <span>Selesai & Kembali ke Peta Rumah</span>
+                    <span>Lanjutkan</span>
+                    <ArrowRight className="w-5 h-5" />
                   </button>
                 )}
               </>
             ) : (
               /* ================= POP-UP JAWABAN SALAH ================= */
               <>
-                <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-3xl mb-3 shadow-xs border border-rose-200">
-                  ❌
+                <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center text-4xl mb-3 shadow-xs border border-rose-200 font-black">
+                  ✕
                 </div>
 
                 <h3 className="font-fun text-xl sm:text-2xl font-bold text-rose-950 mb-2">
-                  Belum Tepat, Coba Perhatikan Lagi!
+                  Yuk, coba lagi!
                 </h3>
 
-                <p className="text-sm sm:text-base text-slate-700 leading-relaxed mb-3">
-                  “Coba perhatikan lagi situasinya. Apa yang harus dilakukan anak? Atau apa yang seharusnya diterima anak?”
+                <p className="text-sm sm:text-base text-slate-700 leading-relaxed mb-6 font-medium">
+                  Amati kembali gambar dan pilih jawaban yang menurutmu tepat, ya!
                 </p>
-
-                <div className="w-full bg-rose-50/80 p-3 rounded-2xl border border-rose-200 text-xs text-rose-900 italic mb-6 text-left">
-                  <strong>Petunjuk:</strong>{' '}
-                  {popupFeedback.step === 'A' ? situationA.hint : situationB.hint}
-                </div>
 
                 <button
                   onClick={handleRetryFromPopup}

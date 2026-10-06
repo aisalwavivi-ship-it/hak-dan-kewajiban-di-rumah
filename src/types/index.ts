@@ -53,6 +53,7 @@ export interface RoomData {
   name: string;
   subtitle: string;
   shortDesc: string;
+  image3D?: string;
   colorTheme: {
     primary: string;
     light: string;

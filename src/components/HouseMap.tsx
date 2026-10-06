@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sun,
   CloudSun,
@@ -15,11 +15,10 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Volume2,
-  Compass,
+  Footprints,
 } from 'lucide-react';
-import { RoomData, RoomId, TimeOfDay, UserProgress, ADVENTURE_ORDER } from '../types';
-import { HOUSE_ROOMS } from '../data/houseData';
+import { RoomId, TimeOfDay, UserProgress, ADVENTURE_ORDER } from '../types';
+import { HOUSE_ROOMS, ASSETS } from '../data/houseData';
 import { sounds } from '../utils/soundEffects';
 
 interface HouseMapProps {
@@ -28,9 +27,11 @@ interface HouseMapProps {
   onSelectRoom: (roomId: RoomId) => void;
   progress: UserProgress;
   onOpenCompleteModal?: () => void;
+  zoomMultiplier?: number;
+  onResetZoom?: () => void;
 }
 
-// Coordinate positions of each room node on the 1100 x 760 game world canvas
+// Coordinate positions of each room node on the 1280 x 720 game world canvas
 interface NodeCoordinates {
   x: number;
   y: number;
@@ -38,18 +39,18 @@ interface NodeCoordinates {
   label: string;
 }
 
-const WORLD_NODES: Record<string, NodeCoordinates> = {
-  start: { x: 390, y: 700, label: 'START (Pintu Masuk)' },
-  'ruang-tamu': { x: 390, y: 530, roomKey: 'ruang-tamu', label: 'Ruang Tamu' },
-  'kamar-tidur': { x: 260, y: 290, roomKey: 'kamar-tidur', label: 'Kamar Tidur' },
-  dapur: { x: 630, y: 290, roomKey: 'dapur', label: 'Dapur' },
-  'kamar-mandi': { x: 690, y: 530, roomKey: 'kamar-mandi', label: 'Kamar Mandi' },
-  taman: { x: 960, y: 400, roomKey: 'taman', label: 'Taman Rumah' },
-  complete: { x: 960, y: 100, label: 'MISSION COMPLETE!' },
-};
+const CANVAS_WIDTH = 1280;
+const CANVAS_HEIGHT = 720;
 
-// Default comfortable close-up camera zoom scale for elementary school children
-const INITIAL_CAMERA_ZOOM = 1.35;
+const WORLD_NODES: Record<string, NodeCoordinates> = {
+  start: { x: 330, y: 660, label: 'START (Pintu Masuk)' },
+  'ruang-tamu': { x: 330, y: 520, roomKey: 'ruang-tamu', label: 'Ruang Tamu' },
+  'kamar-tidur': { x: 270, y: 235, roomKey: 'kamar-tidur', label: 'Kamar Tidur' },
+  dapur: { x: 675, y: 235, roomKey: 'dapur', label: 'Dapur' },
+  'kamar-mandi': { x: 675, y: 520, roomKey: 'kamar-mandi', label: 'Kamar Mandi' },
+  taman: { x: 1060, y: 400, roomKey: 'taman', label: 'Taman Rumah' },
+  complete: { x: 1090, y: 120, label: 'MISSION COMPLETE!' },
+};
 
 export const HouseMap: React.FC<HouseMapProps> = ({
   currentTime,
@@ -57,15 +58,22 @@ export const HouseMap: React.FC<HouseMapProps> = ({
   onSelectRoom,
   progress,
   onOpenCompleteModal,
+  zoomMultiplier: zoomProp,
+  onResetZoom,
 }) => {
   const [lockedToast, setLockedToast] = useState<string | null>(null);
-  const [zoomLevel, setZoomLevel] = useState<number>(INITIAL_CAMERA_ZOOM);
-  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 90, y: -80 });
+  const [hoveredRoom, setHoveredRoom] = useState<RoomId | null>(null);
+  const [internalZoom, setInternalZoom] = useState<number>(1.0);
+  const zoomMultiplier = zoomProp ?? internalZoom;
+  const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isWalking, setIsWalking] = useState<boolean>(false);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({
+    width: 1280,
+    height: 720,
+  });
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Track drag distance to differentiate between dragging the camera and clicking a room
   const dragDistanceRef = useRef<number>(0);
   const dragStartRef = useRef<{ x: number; y: number; startPanX: number; startPanY: number }>({
     x: 0,
@@ -74,26 +82,53 @@ export const HouseMap: React.FC<HouseMapProps> = ({
     startPanY: 0,
   });
 
-  // Clamp camera pan so map world never leaves viewport into empty void
-  const clampCameraPan = (x: number, y: number, currentScale: number) => {
-    if (!mapContainerRef.current) return { x, y };
-    const vw = mapContainerRef.current.clientWidth || 1000;
-    const vh = mapContainerRef.current.clientHeight || 650;
-    const scaledW = 1100 * currentScale;
-    const scaledH = 760 * currentScale;
+  // Calculate dynamic scale so house fills 100% of container without dark margins
+  const baseFitScale = Math.max(
+    containerSize.width / CANVAS_WIDTH,
+    containerSize.height / CANVAS_HEIGHT
+  );
+  const effectiveScale = baseFitScale * zoomMultiplier;
 
-    const maxPanX = Math.max(0, (scaledW - vw) / 2) + 140;
-    const minPanX = -maxPanX;
-    const maxPanY = Math.max(0, (scaledH - vh) / 2) + 120;
-    const minPanY = -maxPanY;
-
-    return {
-      x: Math.min(maxPanX, Math.max(minPanX, x)),
-      y: Math.min(maxPanY, Math.max(minPanY, y)),
+  // Measure container dimensions for responsive full-screen coverage
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+    const updateSize = () => {
+      if (mapContainerRef.current) {
+        const w = mapContainerRef.current.clientWidth || 1280;
+        const h = mapContainerRef.current.clientHeight || 720;
+        setContainerSize({ width: w, height: h });
+      }
     };
-  };
 
-  // Drag / Pan handlers for moving camera across the world map
+    updateSize();
+    const observer = new ResizeObserver(() => {
+      updateSize();
+    });
+    observer.observe(mapContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Clamp camera pan so image always covers viewport and never pulls away
+  const clampCameraPan = useCallback(
+    (x: number, y: number, currentMultiplier: number) => {
+      const curScale = baseFitScale * currentMultiplier;
+      const scaledW = CANVAS_WIDTH * curScale;
+      const scaledH = CANVAS_HEIGHT * curScale;
+
+      const maxPanX = Math.max(0, (scaledW - containerSize.width) / 2);
+      const minPanX = -maxPanX;
+      const maxPanY = Math.max(0, (scaledH - containerSize.height) / 2);
+      const minPanY = -maxPanY;
+
+      return {
+        x: Math.min(maxPanX, Math.max(minPanX, x)),
+        y: Math.min(maxPanY, Math.max(minPanY, y)),
+      };
+    },
+    [baseFitScale, containerSize.width, containerSize.height]
+  );
+
+  // Drag / Pan handlers for smooth exploratory movement
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     setIsDragging(true);
@@ -114,7 +149,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
 
     const targetX = dragStartRef.current.startPanX + dx;
     const targetY = dragStartRef.current.startPanY + dy;
-    setPanOffset(clampCameraPan(targetX, targetY, zoomLevel));
+    setPanOffset(clampCameraPan(targetX, targetY, zoomMultiplier));
   };
 
   const handleMouseUp = () => {
@@ -142,38 +177,22 @@ export const HouseMap: React.FC<HouseMapProps> = ({
 
     const targetX = dragStartRef.current.startPanX + dx;
     const targetY = dragStartRef.current.startPanY + dy;
-    setPanOffset(clampCameraPan(targetX, targetY, zoomLevel));
+    setPanOffset(clampCameraPan(targetX, targetY, zoomMultiplier));
   };
 
   const handleTouchEnd = () => {
     setIsDragging(false);
   };
 
-  // Reset Camera: returns zoom to initial close-up scale and re-centers view
+  // Reset Camera: re-centers and fits full screen
   const handleResetCamera = () => {
     sounds.playClick();
-    setZoomLevel(INITIAL_CAMERA_ZOOM);
-    setPanOffset({ x: 90, y: -80 });
-  };
-
-  // Zoom in camera closer
-  const handleZoomIn = () => {
-    sounds.playClick();
-    setZoomLevel((z) => {
-      const next = Math.min(2.0, z + 0.2);
-      setPanOffset((cur) => clampCameraPan(cur.x, cur.y, next));
-      return next;
-    });
-  };
-
-  // Zoom out camera further
-  const handleZoomOut = () => {
-    sounds.playClick();
-    setZoomLevel((z) => {
-      const next = Math.max(0.9, z - 0.2);
-      setPanOffset((cur) => clampCameraPan(cur.x, cur.y, next));
-      return next;
-    });
+    if (onResetZoom) {
+      onResetZoom();
+    } else {
+      setInternalZoom(1.0);
+    }
+    setPanOffset({ x: 0, y: 0 });
   };
 
   // Determine which rooms are unlocked
@@ -193,9 +212,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
       ? 'complete'
       : ADVENTURE_ORDER[completedRoomsCount];
 
-  // Avatar coordinates:
-  // At start (0 rooms completed), avatar stands at START!
-  // Once Ruang Tamu is completed, avatar stands at Kamar Tidur, etc.
+  // Avatar coordinates
   const avatarCoords =
     completedRoomsCount === 0
       ? WORLD_NODES.start
@@ -206,9 +223,9 @@ export const HouseMap: React.FC<HouseMapProps> = ({
   // Friendly speech text above avatar
   const avatarSpeechText =
     completedRoomsCount === 0
-      ? 'Misi dimulai dari START! Ayo jelajahi Ruang Tamu!'
+      ? 'Misi dimulai dari Pintu Masuk! Ayo jelajahi Ruang Tamu!'
       : targetRoomId === 'complete'
-      ? 'Semua tugas selesai! Hore!'
+      ? 'Semua tugas selesai! Hore, kamu hebat!'
       : `Ayo amati ${HOUSE_ROOMS[targetRoomId]?.name || 'Rumah'}!`;
 
   const timeConfigs: Record<
@@ -219,7 +236,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
       label: 'PAGI',
       icon: <Sun className="w-4 h-4 text-amber-500" />,
       buttonStyle: 'bg-amber-100 text-amber-900 border-amber-300',
-      ambientDesc: '☀️ Pagi Hari: Cahaya fajar hangat menyinari kamar dan ruang keluarga.',
+      ambientDesc: '☀️ Pagi Hari: Cahaya fajar segar menyinari kamar dan ruang keluarga.',
     },
     siang: {
       label: 'SIANG',
@@ -238,11 +255,10 @@ export const HouseMap: React.FC<HouseMapProps> = ({
   const handleTimeClick = (time: TimeOfDay) => {
     sounds.playClick();
     onSelectTime(time);
-    sounds.speakIndonesian(`Waktu rumah berganti ke ${timeConfigs[time].label}`);
   };
 
   const handleNodeClick = (roomId: RoomId) => {
-    // If the user was dragging/panning the camera, ignore click!
+    // If user dragged camera, ignore click
     if (dragDistanceRef.current > 8) {
       return;
     }
@@ -269,21 +285,21 @@ export const HouseMap: React.FC<HouseMapProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden flex flex-col bg-slate-900 select-none">
+    <div className="relative w-full h-full overflow-hidden flex flex-col bg-slate-950 select-none">
       
       {/* ========================================================
-          FLOATING HUD HEADER (MINIMAL, NON-INTRUSIVE)
+          FLOATING HUD HEADER (POLISHED, ACCESSIBLE, CRISP)
           ======================================================== */}
       <div className="absolute top-3 left-3 right-3 z-30 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
         
         {/* Left Badge: Map Title & Journey Step */}
-        <div className="bg-white/95 backdrop-blur-md px-4 py-2 rounded-2xl shadow-lg border border-amber-300 pointer-events-auto flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-amber-400 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-            🗺️
+        <div className="bg-white/95 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl border border-amber-300 pointer-events-auto flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-white flex items-center justify-center font-bold text-base shadow-xs">
+            🏡
           </div>
           <div>
             <div className="text-[10px] uppercase tracking-wider font-extrabold text-amber-700">
-              DUNIA PETUALANGAN RUMAH
+              KIKI'S HOME QUEST
             </div>
             <div className="font-fun font-bold text-slate-900 text-sm flex items-center gap-1.5">
               <span>Misi Selesai:</span>
@@ -295,7 +311,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
         </div>
 
         {/* Center: TIME CONTROLS (☀️ PAGI, 🌤️ SIANG, 🌙 MALAM) */}
-        <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg border border-slate-200 pointer-events-auto flex items-center gap-1.5">
+        <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl border border-slate-200 pointer-events-auto flex items-center gap-1.5">
           {(['pagi', 'siang', 'malam'] as TimeOfDay[]).map((time) => {
             const conf = timeConfigs[time];
             const isActive = currentTime === time;
@@ -305,7 +321,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
                 onClick={() => handleTimeClick(time)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-fun font-bold text-xs sm:text-sm transition-all transform cursor-pointer ${
                   isActive
-                    ? `${conf.buttonStyle} shadow-md scale-102 border`
+                    ? `${conf.buttonStyle} shadow-md scale-105 border font-extrabold ring-2 ring-amber-400/50`
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
@@ -316,28 +332,15 @@ export const HouseMap: React.FC<HouseMapProps> = ({
           })}
         </div>
 
-        {/* Right: Map Zoom Controls & Help */}
-        <div className="bg-white/95 backdrop-blur-md px-2 py-1.5 rounded-2xl shadow-lg border border-slate-200 pointer-events-auto flex items-center gap-1">
-          <button
-            onClick={handleZoomIn}
-            className="p-1.5 text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-            title="Perbesar Kamera Peta"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            className="p-1.5 text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-            title="Perkecil Kamera Peta"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
+        {/* Right: Map Re-center button (Zoom buttons are prominently located at the top Navbar) */}
+        <div className="bg-white/95 backdrop-blur-md px-2.5 py-1.5 rounded-2xl shadow-xl border border-slate-200 pointer-events-auto flex items-center">
           <button
             onClick={handleResetCamera}
-            className="p-1.5 text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
-            title="Pusatkan Kamera Peta (Reset Kamera)"
+            className="px-2.5 py-1 text-slate-700 hover:text-amber-900 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors flex items-center gap-1.5 font-fun text-xs font-bold"
+            title="Pusatkan Kamera Peta"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+            <span>Pusatkan</span>
           </button>
         </div>
 
@@ -352,10 +355,9 @@ export const HouseMap: React.FC<HouseMapProps> = ({
       )}
 
       {/* ========================================================
-          THE HERO GAME WORLD CANVAS (FULL-VIEWPORT EXPLORATION MAP)
-          Camera Viewport: Drag/pan moves camera across the world map.
-          Avatar moves visually with the world, but logical game state is untouched.
-          Zero independent vertical scrolling: uses overflow-hidden + camera pan.
+          THE HERO 3D GAME WORLD CANVAS (FULL-VIEWPORT IMMERSIVE 3D HOUSE)
+          Fills 100% of the screen without dark margins on left/right.
+          House is large, centered, and surrounded by its dedicated yard.
           ======================================================== */}
       <div
         ref={mapContainerRef}
@@ -366,446 +368,335 @@ export const HouseMap: React.FC<HouseMapProps> = ({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 w-full h-full overflow-hidden flex items-center justify-center p-1 sm:p-2 bg-emerald-950/20 relative select-none cursor-grab active:cursor-grabbing"
+        className="flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-gradient-to-b from-emerald-950 via-teal-950 to-slate-950 relative select-none cursor-grab active:cursor-grabbing"
       >
         <div
-          className="relative transition-transform duration-100 ease-out origin-center shadow-2xl rounded-3xl overflow-hidden border-4 border-amber-800/40 select-none shrink-0"
+          className="relative transition-transform duration-100 ease-out origin-center select-none shrink-0"
           style={{
-            width: '1100px',
-            height: '760px',
-            minWidth: '1100px',
-            minHeight: '760px',
-            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
+            width: `${CANVAS_WIDTH}px`,
+            height: `${CANVAS_HEIGHT}px`,
+            transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${effectiveScale})`,
           }}
         >
           {/* ====================================================
-              VECTOR ILLUSTRATION OF THE HOUSE WORLD
+              1. SINGLE UNIFIED 3D ISOMETRIC HOUSE BACKGROUND
+              A single architectural cutaway building on a lush green lawn:
+              Connected walls, continuous floors, interior doorways,
+              consistent perspective, with spacious garden on the right.
               ==================================================== */}
-          <svg
-            viewBox="0 0 1100 760"
-            className="w-full h-full"
-            preserveAspectRatio="xMidYMid meet"
-          >
-            <defs>
-              {/* Patterns for Wood, Tiles, and Grass */}
-              <pattern id="grassPattern" width="40" height="40" patternUnits="userSpaceOnUse">
-                <rect width="40" height="40" fill={currentTime === 'malam' ? '#143823' : '#4E9F3D'} />
-                <circle cx="10" cy="15" r="1.5" fill={currentTime === 'malam' ? '#1e4d31' : '#64B852'} />
-                <circle cx="28" cy="30" r="1.5" fill={currentTime === 'malam' ? '#1e4d31' : '#64B852'} />
-              </pattern>
-
-              <pattern id="woodLivingFloor" width="60" height="15" patternUnits="userSpaceOnUse">
-                <rect width="60" height="15" fill={currentTime === 'malam' ? '#6B4A34' : '#E0B589'} />
-                <line x1="0" y1="15" x2="60" y2="15" stroke={currentTime === 'malam' ? '#553926' : '#CFA070'} strokeWidth="1" />
-                <line x1="30" y1="0" x2="30" y2="15" stroke={currentTime === 'malam' ? '#553926' : '#CFA070'} strokeWidth="1" />
-              </pattern>
-
-              <pattern id="bedroomFloor" width="40" height="40" patternUnits="userSpaceOnUse">
-                <rect width="40" height="40" fill={currentTime === 'malam' ? '#3B4D66' : '#E8EEF5'} />
-                <path d="M 0 0 L 40 40 M 0 40 L 40 0" stroke={currentTime === 'malam' ? '#4C617F' : '#D6E2EE'} strokeWidth="0.8" />
-              </pattern>
-
-              <pattern id="kitchenTiles" width="30" height="30" patternUnits="userSpaceOnUse">
-                <rect width="30" height="30" fill={currentTime === 'malam' ? '#664C38' : '#FAF5EF'} />
-                <rect width="15" height="15" fill={currentTime === 'malam' ? '#573F2E' : '#F1E4D4'} />
-                <rect x="15" y="15" width="15" height="15" fill={currentTime === 'malam' ? '#573F2E' : '#F1E4D4'} />
-              </pattern>
-
-              <pattern id="bathroomTiles" width="25" height="25" patternUnits="userSpaceOnUse">
-                <rect width="25" height="25" fill={currentTime === 'malam' ? '#1D4552' : '#E6F8FA'} />
-                <rect width="25" height="25" fill="none" stroke={currentTime === 'malam' ? '#163842' : '#C7EEF2'} strokeWidth="1" />
-              </pattern>
-
-              {/* Night Lighting Radial Lamps */}
-              <radialGradient id="nightLampLiving" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FFF2B2" stopOpacity="0.85" />
-                <stop offset="60%" stopColor="#FFE082" stopOpacity="0.4" />
-                <stop offset="100%" stopColor="#FFE082" stopOpacity="0" />
-              </radialGradient>
-
-              <radialGradient id="nightLampBed" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#FFF6CC" stopOpacity="0.8" />
-                <stop offset="70%" stopColor="#FFE57F" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#FFE57F" stopOpacity="0" />
-              </radialGradient>
-
-              {/* Morning Warm Sunlight Gradient */}
-              <linearGradient id="morningSunlight" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#FFA726" stopOpacity="0.25" />
-                <stop offset="60%" stopColor="#FFCC80" stopOpacity="0.08" />
-                <stop offset="100%" stopColor="#FFF" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-
-            {/* ==================================================
-                1. OUTSIDE GROUND & GARDEN TERRAIN
-                ================================================== */}
-            <rect width="1100" height="760" fill="url(#grassPattern)" />
-
-            {/* Perimeter Wooden Fence */}
-            <rect x="15" y="15" width="1070" height="730" fill="none" stroke="#8D6E63" strokeWidth="8" rx="20" strokeDasharray="16 8" />
-
-            {/* ==================================================
-                2. HOUSE STRUCTURE (WALLS, FOUNDATION, ROOM FLOORS)
-                ================================================== */}
-            {/* House Foundation shadow */}
-            <rect x="70" y="80" width="750" height="610" rx="24" fill="rgba(0,0,0,0.18)" />
-            {/* Outer House Foundation */}
-            <rect
-              x="60"
-              y="70"
-              width="750"
-              height="610"
-              rx="24"
-              fill={currentTime === 'malam' ? '#4A4E5A' : '#FFFDF9'}
-              stroke="#BCAAA4"
-              strokeWidth="10"
+          <div className="absolute inset-0 overflow-hidden shadow-2xl">
+            <img
+              src={ASSETS.unifiedHouse3D || ASSETS.houseMapIsometric3D}
+              alt="Satu Rumah 3D Utuh & Terhubung"
+              className="w-full h-full object-cover select-none pointer-events-none"
+              draggable={false}
             />
-
-            {/* --------------------------------------------------
-                ROOM 1: RUANG TAMU (Bottom-Left)
-                x: 80, y: 390, width: 430, height: 270
-                -------------------------------------------------- */}
-            <g id="visual-ruang-tamu">
-              {/* Floor */}
-              <rect x="80" y="390" width="430" height="270" fill="url(#woodLivingFloor)" />
-              {/* Room Dividing Wall */}
-              <line x1="80" y1="390" x2="510" y2="390" stroke="#795548" strokeWidth="8" />
-              <line x1="510" y1="390" x2="510" y2="660" stroke="#795548" strokeWidth="8" />
-
-              {/* Area Rug */}
-              <rect x="220" y="440" width="180" height="130" rx="16" fill="#F8BBD0" stroke="#EC407A" strokeWidth="2" opacity="0.8" />
-              
-              {/* Big Comfortable Sofa */}
-              <rect x="235" y="420" width="150" height="42" rx="10" fill="#00838F" stroke="#006064" strokeWidth="2" />
-              <rect x="245" y="430" width="40" height="26" rx="6" fill="#00ACC1" />
-              <rect x="290" y="430" width="40" height="26" rx="6" fill="#00ACC1" />
-              <rect x="335" y="430" width="40" height="26" rx="6" fill="#00ACC1" />
-              
-              {/* Coffee Table */}
-              <rect x="255" y="480" width="110" height="46" rx="8" fill="#8D6E63" stroke="#6D4C41" strokeWidth="2" />
-              <circle cx="280" cy="503" r="7" fill="#FFF" />
-              <circle cx="340" cy="503" r="6" fill="#FFE082" />
-
-              {/* Shoe Rack near Front Door */}
-              <rect x="420" y="605" width="70" height="32" rx="4" fill="#6D4C41" stroke="#4E342E" strokeWidth="2" />
-              <ellipse cx="440" cy="621" rx="9" ry="5" fill="#EF5350" />
-              <ellipse cx="468" cy="621" rx="9" ry="5" fill="#42A5F5" />
-
-              {/* Potted Indoor Plant */}
-              <circle cx="120" cy="430" r="16" fill="#43A047" />
-              <circle cx="120" cy="430" r="8" fill="#8D6E63" />
-
-              {/* Front Door Opening */}
-              <rect x="340" y="650" width="90" height="20" fill="#FFE0B2" stroke="#8D6E63" strokeWidth="4" />
-              {/* Welcome Doormat */}
-              <rect x="345" y="675" width="80" height="25" rx="6" fill="#FFB74D" stroke="#E65100" strokeWidth="2" />
-              <text x="385" y="692" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#795548">
-                WELCOME
-              </text>
-            </g>
-
-            {/* --------------------------------------------------
-                ROOM 2: KAMAR TIDUR (Top-Left)
-                x: 80, y: 90, width: 430, height: 290
-                -------------------------------------------------- */}
-            <g id="visual-kamar-tidur">
-              {/* Floor */}
-              <rect x="80" y="90" width="430" height="290" fill="url(#bedroomFloor)" />
-
-              {/* Doorway from Living Room to Bedroom */}
-              <rect x="220" y="382" width="60" height="16" fill="#E8EEF5" />
-
-              {/* Bed with Pillows and Quilt */}
-              <rect x="110" y="120" width="130" height="170" rx="12" fill="#E3F2FD" stroke="#90CAF9" strokeWidth="3" />
-              {/* Pillows */}
-              <rect x="125" y="130" width="45" height="30" rx="6" fill="#FFF" stroke="#BBDEFB" strokeWidth="1.5" />
-              <rect x="180" y="130" width="45" height="30" rx="6" fill="#FFF" stroke="#BBDEFB" strokeWidth="1.5" />
-              {/* Colorful Folded Blanket / Quilt */}
-              <rect x="115" y="175" width="120" height="110" rx="8" fill="#42A5F5" stroke="#1E88E5" strokeWidth="2" />
-              <line x1="115" y1="230" x2="235" y2="230" stroke="#FFF" strokeWidth="3" strokeDasharray="6 4" />
-
-              {/* Nightstand Table + Lamp */}
-              <rect x="250" y="120" width="45" height="40" rx="6" fill="#8D6E63" />
-              <circle cx="272" cy="140" r="10" fill="#FFEE58" stroke="#FDD835" strokeWidth="2" />
-
-              {/* Study Desk & Books */}
-              <rect x="330" y="120" width="140" height="65" rx="6" fill="#A1887F" stroke="#795548" strokeWidth="2" />
-              {/* Desk Chair */}
-              <rect x="375" y="195" width="45" height="35" rx="6" fill="#5C6BC0" />
-              {/* Notebook & Study Lamp */}
-              <rect x="350" y="135" width="35" height="25" rx="3" fill="#FFF" stroke="#E0E0E0" strokeWidth="1" />
-              <circle cx="440" cy="145" r="9" fill="#FFCA28" />
-
-              {/* Wardrobe Closet */}
-              <rect x="110" y="315" width="120" height="50" rx="4" fill="#6D4C41" stroke="#4E342E" strokeWidth="2" />
-              <line x1="170" y1="315" x2="170" y2="365" stroke="#4E342E" strokeWidth="2" />
-
-              {/* Bedroom Star Area Rug */}
-              <circle cx="280" cy="270" r="35" fill="#FFE082" opacity="0.6" />
-            </g>
-
-            {/* --------------------------------------------------
-                ROOM 3: DAPUR & RUANG MAKAN (Top-Center)
-                x: 520, y: 90, width: 280, height: 290
-                -------------------------------------------------- */}
-            <g id="visual-dapur">
-              {/* Floor */}
-              <rect x="520" y="90" width="280" height="290" fill="url(#kitchenTiles)" />
-              {/* Dividing Wall between bedroom & kitchen */}
-              <line x1="510" y1="90" x2="510" y2="390" stroke="#795548" strokeWidth="8" />
-
-              {/* Doorway from Bedroom to Kitchen */}
-              <rect x="502" y="250" width="16" height="60" fill="#FAF5EF" />
-
-              {/* Dining Table */}
-              <rect x="560" y="190" width="130" height="85" rx="14" fill="#D7CCC8" stroke="#8D6E63" strokeWidth="3" />
-              {/* Chairs around table */}
-              <rect x="580" y="165" width="35" height="18" rx="4" fill="#8D6E63" />
-              <rect x="635" y="165" width="35" height="18" rx="4" fill="#8D6E63" />
-              <rect x="580" y="282" width="35" height="18" rx="4" fill="#8D6E63" />
-              <rect x="635" y="282" width="35" height="18" rx="4" fill="#8D6E63" />
-              {/* Plates and Glasses */}
-              <circle cx="600" cy="232" r="10" fill="#FFF" stroke="#B0BEC5" strokeWidth="1" />
-              <circle cx="650" cy="232" r="10" fill="#FFF" stroke="#B0BEC5" strokeWidth="1" />
-              <circle cx="625" cy="215" r="7" fill="#FF7043" />
-
-              {/* Kitchen Countertop (Right Wall) */}
-              <rect x="735" y="105" width="55" height="170" rx="4" fill="#CFD8DC" stroke="#78909C" strokeWidth="2" />
-              {/* Sink */}
-              <rect x="742" y="120" width="40" height="35" rx="4" fill="#90A4AE" />
-              <circle cx="762" cy="137" r="4" fill="#ECEFF1" />
-              {/* Stove */}
-              <rect x="742" y="175" width="40" height="40" rx="4" fill="#37474F" />
-              <circle cx="752" cy="188" r="6" fill="#F4511E" />
-              <circle cx="772" cy="202" r="6" fill="#F4511E" />
-
-              {/* Refrigerator */}
-              <rect x="735" y="295" width="55" height="70" rx="4" fill="#B0BEC5" stroke="#78909C" strokeWidth="2" />
-              <line x1="735" y1="330" x2="790" y2="330" stroke="#78909C" strokeWidth="2" />
-            </g>
-
-            {/* --------------------------------------------------
-                ROOM 4: KAMAR MANDI (Bottom-Right of House)
-                x: 520, y: 390, width: 280, height: 270
-                -------------------------------------------------- */}
-            <g id="visual-kamar-mandi">
-              {/* Floor */}
-              <rect x="520" y="390" width="280" height="270" fill="url(#bathroomTiles)" />
-
-              {/* Doorway from Kitchen to Bathroom */}
-              <rect x="640" y="382" width="60" height="16" fill="#E6F8FA" />
-
-              {/* Bathtub with Blue Water */}
-              <rect x="545" y="420" width="80" height="130" rx="16" fill="#FFF" stroke="#4DD0E1" strokeWidth="3" />
-              <rect x="553" y="430" width="64" height="110" rx="10" fill="#80DEEA" />
-
-              {/* Washbasin & Mirror */}
-              <rect x="660" y="415" width="65" height="45" rx="6" fill="#FFF" stroke="#B0BEC5" strokeWidth="2" />
-              <ellipse cx="692" cy="437" rx="18" ry="12" fill="#E0F7FA" />
-
-              {/* Towel Rack with Towels */}
-              <rect x="755" y="430" width="35" height="60" rx="3" fill="#80CBC4" stroke="#00796B" strokeWidth="2" />
-              <line x1="755" y1="450" x2="790" y2="450" stroke="#FFF" strokeWidth="2" />
-
-              {/* Clean Ceramic Toilet */}
-              <ellipse cx="700" cy="590" rx="22" ry="28" fill="#FFF" stroke="#B0BEC5" strokeWidth="2" />
-              <rect x="678" y="550" width="44" height="20" rx="4" fill="#ECEFF1" stroke="#B0BEC5" strokeWidth="1.5" />
-
-              {/* Exit Door to Outdoor Garden */}
-              <rect x="792" y="500" width="16" height="70" fill="#81C784" />
-            </g>
-
-            {/* --------------------------------------------------
-                ROOM 5: TAMAN RUMAH & HALAMAN (Right Area)
-                x: 820, y: 70, width: 260, height: 610
-                -------------------------------------------------- */}
-            <g id="visual-taman">
-              {/* Garden Stone Stepping Path */}
-              <circle cx="845" cy="535" r="14" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="890" cy="520" r="15" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="940" cy="490" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="440" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="380" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="320" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="250" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="180" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-              <circle cx="960" cy="120" r="16" fill="#D7CCC8" stroke="#A1887F" strokeWidth="2" />
-
-              {/* Big Shady Green Garden Tree */}
-              <circle cx="1020" cy="280" r="55" fill={currentTime === 'malam' ? '#1B5E20' : '#2E7D32'} opacity="0.9" />
-              <circle cx="1040" cy="260" r="45" fill={currentTime === 'malam' ? '#2E7D32' : '#388E3C'} opacity="0.9" />
-              <circle cx="1000" cy="300" r="45" fill={currentTime === 'malam' ? '#2E7D32' : '#43A047'} opacity="0.9" />
-
-              {/* Garden Wooden Bench */}
-              <rect x="850" y="320" width="30" height="75" rx="6" fill="#8D6E63" stroke="#5D4037" strokeWidth="2" />
-
-              {/* Flower Bushes */}
-              <g id="flower-patches">
-                <circle cx="860" cy="200" r="18" fill="#EC407A" />
-                <circle cx="880" cy="210" r="14" fill="#FFEB3B" />
-                <circle cx="850" cy="220" r="12" fill="#AB47BC" />
-
-                <circle cx="880" cy="620" r="20" fill="#FFA726" />
-                <circle cx="905" cy="630" r="16" fill="#EC407A" />
-                <circle cx="860" cy="635" r="14" fill="#FFEB3B" />
-              </g>
-
-              {/* Football / Toy on Lawn */}
-              <circle cx="905" cy="425" r="12" fill="#FFF" stroke="#212121" strokeWidth="2" />
-              <polygon points="905,420 902,423 904,427 908,427 909,423" fill="#212121" />
-
-              {/* FINISH: Outside Garden Gate / Teman-teman Menanti */}
-              <rect x="915" y="45" width="90" height="26" rx="6" fill="#FFCA28" stroke="#F57F17" strokeWidth="3" />
-              <text x="960" y="62" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#3E2723">
-                GERBANG BERMAIN
-              </text>
-            </g>
-
-            {/* ==================================================
-                3. THE CONTINUOUS ADVENTURE TRAIL (PATHWAYS & FOOTPRINTS)
-                Connecting: START -> Ruang Tamu -> Kamar Tidur -> Dapur -> Kamar Mandi -> Taman -> Complete
-                ================================================== */}
-            <g id="adventure-trail-lines">
-              {/* Segment 1: START to Ruang Tamu */}
-              <path
-                d="M 390 690 L 390 540"
-                fill="none"
-                stroke="#FFB300"
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-              />
-
-              {/* Segment 2: Ruang Tamu to Kamar Tidur */}
-              <path
-                d="M 390 520 L 250 520 L 250 300"
-                fill="none"
-                stroke={progress.exploredRooms['ruang-tamu'] ? '#4CAF50' : '#FFB300'}
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-                opacity={progress.exploredRooms['ruang-tamu'] ? 0.9 : 0.4}
-              />
-
-              {/* Segment 3: Kamar Tidur to Dapur */}
-              <path
-                d="M 270 290 L 500 290 L 620 290"
-                fill="none"
-                stroke={progress.exploredRooms['kamar-tidur'] ? '#4CAF50' : '#FFB300'}
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-                opacity={progress.exploredRooms['kamar-tidur'] ? 0.9 : 0.4}
-              />
-
-              {/* Segment 4: Dapur to Kamar Mandi */}
-              <path
-                d="M 640 300 L 670 300 L 670 520"
-                fill="none"
-                stroke={progress.exploredRooms['dapur'] ? '#4CAF50' : '#FFB300'}
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-                opacity={progress.exploredRooms['dapur'] ? 0.9 : 0.4}
-              />
-
-              {/* Segment 5: Kamar Mandi to Taman */}
-              <path
-                d="M 700 530 L 800 530 L 950 530 L 950 410"
-                fill="none"
-                stroke={progress.exploredRooms['kamar-mandi'] ? '#4CAF50' : '#FFB300'}
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-                opacity={progress.exploredRooms['kamar-mandi'] ? 0.9 : 0.4}
-              />
-
-              {/* Segment 6: Taman to Complete Gate */}
-              <path
-                d="M 960 390 L 960 115"
-                fill="none"
-                stroke={progress.exploredRooms['taman'] ? '#4CAF50' : '#FFB300'}
-                strokeWidth="6"
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-                opacity={progress.exploredRooms['taman'] ? 0.9 : 0.4}
-              />
-            </g>
-
-            {/* ==================================================
-                4. DYNAMIC ATMOSPHERE OVERLAYS (PAGI / SIANG / MALAM)
-                ================================================== */}
-            {currentTime === 'pagi' && (
-              <g id="overlay-morning" pointerEvents="none">
-                <rect width="1100" height="760" fill="url(#morningSunlight)" />
-              </g>
-            )}
-
-            {currentTime === 'malam' && (
-              <g id="overlay-night" pointerEvents="none">
-                {/* Night darkness outside house */}
-                <rect width="1100" height="760" fill="rgba(10, 18, 38, 0.55)" />
-
-                {/* Stars in garden sky */}
-                <circle cx="880" cy="100" r="2" fill="#FFF" opacity="0.9" />
-                <circle cx="920" cy="140" r="1.5" fill="#FFF" opacity="0.8" />
-                <circle cx="1020" cy="90" r="2.5" fill="#FFE082" opacity="0.9" />
-                <circle cx="1050" cy="170" r="1.5" fill="#FFF" opacity="0.8" />
-                <circle cx="900" cy="680" r="2" fill="#FFF" opacity="0.9" />
-
-                {/* Warm glowing interior lamps */}
-                <circle cx="390" cy="520" r="160" fill="url(#nightLampLiving)" />
-                <circle cx="260" cy="270" r="140" fill="url(#nightLampBed)" />
-                <circle cx="630" cy="270" r="140" fill="url(#nightLampLiving)" />
-              </g>
-            )}
-
-            {/* ==================================================
-                5. ROOM STATUS OVERLAYS (DIMMING LOCKED ROOMS)
-                ================================================== */}
-            {/* Kamar Tidur lock overlay */}
-            {!isRoomUnlocked('kamar-tidur') && (
-              <g id="lock-kamar-tidur" pointerEvents="none">
-                <rect x="80" y="90" width="430" height="290" fill="rgba(30, 41, 59, 0.45)" rx="8" />
-              </g>
-            )}
-
-            {/* Dapur lock overlay */}
-            {!isRoomUnlocked('dapur') && (
-              <g id="lock-dapur" pointerEvents="none">
-                <rect x="520" y="90" width="280" height="290" fill="rgba(30, 41, 59, 0.45)" rx="8" />
-              </g>
-            )}
-
-            {/* Kamar Mandi lock overlay */}
-            {!isRoomUnlocked('kamar-mandi') && (
-              <g id="lock-kamar-mandi" pointerEvents="none">
-                <rect x="520" y="390" width="280" height="270" fill="rgba(30, 41, 59, 0.45)" rx="8" />
-              </g>
-            )}
-
-            {/* Taman lock overlay */}
-            {!isRoomUnlocked('taman') && (
-              <g id="lock-taman" pointerEvents="none">
-                <rect x="830" y="80" width="250" height="600" fill="rgba(30, 41, 59, 0.45)" rx="16" />
-              </g>
-            )}
-
-          </svg>
+          </div>
 
           {/* ====================================================
-              INTERACTIVE CLICKABLE ROOM HUBS & BADGES (ON MAP)
-              Positioned absolutely on top of the world coordinates!
+              2. INTERACTIVE 3D ROOM HOTSPOTS (AREA 1 - AREA 5)
+              Mapped over the unified house structure.
+              Highlights room volume naturally upon hover or focus.
+              ==================================================== */}
+
+          {/* AREA 1: RUANG TAMU HOTSPOT (Bottom-Left House Quadrant) */}
+          <div
+            onClick={() => handleNodeClick('ruang-tamu')}
+            onMouseEnter={() => setHoveredRoom('ruang-tamu')}
+            onMouseLeave={() => setHoveredRoom(null)}
+            className={`absolute rounded-3xl cursor-pointer transition-all duration-300 z-12 ${
+              targetRoomId === 'ruang-tamu'
+                ? 'bg-amber-400/15 ring-3 ring-amber-400/90 shadow-xl'
+                : hoveredRoom === 'ruang-tamu'
+                ? 'bg-amber-400/10 ring-2 ring-amber-300/80 shadow-md'
+                : 'hover:bg-amber-400/5'
+            }`}
+            style={{
+              left: '80px',
+              top: '380px',
+              width: '430px',
+              height: '280px',
+            }}
+          >
+            {/* Room Name Badge inside room */}
+            <div className="absolute top-3 left-4 pointer-events-none flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20 text-white font-fun font-bold text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Area 1: Ruang Tamu</span>
+            </div>
+          </div>
+
+          {/* AREA 2: KAMAR TIDUR HOTSPOT (Top-Left House Quadrant) */}
+          <div
+            onClick={() => handleNodeClick('kamar-tidur')}
+            onMouseEnter={() => setHoveredRoom('kamar-tidur')}
+            onMouseLeave={() => setHoveredRoom(null)}
+            className={`absolute rounded-3xl cursor-pointer transition-all duration-300 z-12 ${
+              targetRoomId === 'kamar-tidur'
+                ? 'bg-amber-400/15 ring-3 ring-amber-400/90 shadow-xl'
+                : hoveredRoom === 'kamar-tidur'
+                ? 'bg-amber-400/10 ring-2 ring-amber-300/80 shadow-md'
+                : 'hover:bg-amber-400/5'
+            }`}
+            style={{
+              left: '80px',
+              top: '70px',
+              width: '430px',
+              height: '290px',
+            }}
+          >
+            {/* Room Name Badge inside room */}
+            <div className="absolute top-3 left-4 pointer-events-none flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20 text-white font-fun font-bold text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span>Area 2: Kamar Tidur</span>
+            </div>
+
+            {/* Locked Room Veil within house structure */}
+            {!isRoomUnlocked('kamar-tidur') && (
+              <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] rounded-3xl flex flex-col items-center justify-center text-center p-3 text-white pointer-events-none">
+                <div className="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-600 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <span className="font-fun font-bold text-xs text-slate-200">Area Terkunci</span>
+                <span className="text-[10px] text-slate-300">Selesaikan Ruang Tamu lebih dulu</span>
+              </div>
+            )}
+          </div>
+
+          {/* AREA 3: DAPUR & RUANG MAKAN HOTSPOT (Top-Right House Section) */}
+          <div
+            onClick={() => handleNodeClick('dapur')}
+            onMouseEnter={() => setHoveredRoom('dapur')}
+            onMouseLeave={() => setHoveredRoom(null)}
+            className={`absolute rounded-3xl cursor-pointer transition-all duration-300 z-12 ${
+              targetRoomId === 'dapur'
+                ? 'bg-amber-400/15 ring-3 ring-amber-400/90 shadow-xl'
+                : hoveredRoom === 'dapur'
+                ? 'bg-amber-400/10 ring-2 ring-amber-300/80 shadow-md'
+                : 'hover:bg-amber-400/5'
+            }`}
+            style={{
+              left: '525px',
+              top: '70px',
+              width: '300px',
+              height: '290px',
+            }}
+          >
+            {/* Room Name Badge inside room */}
+            <div className="absolute top-3 left-4 pointer-events-none flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20 text-white font-fun font-bold text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>Area 3: Dapur</span>
+            </div>
+
+            {/* Locked Room Veil within house structure */}
+            {!isRoomUnlocked('dapur') && (
+              <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] rounded-3xl flex flex-col items-center justify-center text-center p-3 text-white pointer-events-none">
+                <div className="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-600 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <span className="font-fun font-bold text-xs text-slate-200">Area Terkunci</span>
+                <span className="text-[10px] text-slate-300">Selesaikan Kamar Tidur lebih dulu</span>
+              </div>
+            )}
+          </div>
+
+          {/* AREA 4: KAMAR MANDI HOTSPOT (Bottom-Right House Section) */}
+          <div
+            onClick={() => handleNodeClick('kamar-mandi')}
+            onMouseEnter={() => setHoveredRoom('kamar-mandi')}
+            onMouseLeave={() => setHoveredRoom(null)}
+            className={`absolute rounded-3xl cursor-pointer transition-all duration-300 z-12 ${
+              targetRoomId === 'kamar-mandi'
+                ? 'bg-amber-400/15 ring-3 ring-amber-400/90 shadow-xl'
+                : hoveredRoom === 'kamar-mandi'
+                ? 'bg-amber-400/10 ring-2 ring-amber-300/80 shadow-md'
+                : 'hover:bg-amber-400/5'
+            }`}
+            style={{
+              left: '525px',
+              top: '380px',
+              width: '300px',
+              height: '280px',
+            }}
+          >
+            {/* Room Name Badge inside room */}
+            <div className="absolute top-3 left-4 pointer-events-none flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-2.5 py-1 rounded-xl border border-white/20 text-white font-fun font-bold text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <span>Area 4: Kamar Mandi</span>
+            </div>
+
+            {/* Locked Room Veil within house structure */}
+            {!isRoomUnlocked('kamar-mandi') && (
+              <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] rounded-3xl flex flex-col items-center justify-center text-center p-3 text-white pointer-events-none">
+                <div className="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-600 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <span className="font-fun font-bold text-xs text-slate-200">Area Terkunci</span>
+                <span className="text-[10px] text-slate-300">Selesaikan Dapur lebih dulu</span>
+              </div>
+            )}
+          </div>
+
+          {/* AREA 5: TAMAN RUMAH HOTSPOT (Dedicated Spacious Outdoor Garden & Lawn)
+              Positioned squarely on the outdoor yard on the right, completely separate from the bathroom. */}
+          <div
+            onClick={() => handleNodeClick('taman')}
+            onMouseEnter={() => setHoveredRoom('taman')}
+            onMouseLeave={() => setHoveredRoom(null)}
+            className={`absolute rounded-3xl cursor-pointer transition-all duration-300 z-12 ${
+              targetRoomId === 'taman'
+                ? 'bg-amber-400/15 ring-3 ring-amber-400/90 shadow-xl'
+                : hoveredRoom === 'taman'
+                ? 'bg-amber-400/10 ring-2 ring-amber-300/80 shadow-md'
+                : 'hover:bg-amber-400/5'
+            }`}
+            style={{
+              left: '850px',
+              top: '60px',
+              width: '390px',
+              height: '610px',
+            }}
+          >
+            {/* Garden Tag inside outdoor space */}
+            <div className="absolute top-4 left-4 pointer-events-none flex items-center gap-1.5 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-xl border border-white/20 text-white font-fun font-bold text-xs shadow-md">
+              <span className="w-2 h-2 rounded-full bg-lime-400" />
+              <span>Area 5: Taman Rumah</span>
+            </div>
+
+            {/* Locked Room Veil within outdoor space */}
+            {!isRoomUnlocked('taman') && (
+              <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px] rounded-3xl flex flex-col items-center justify-center text-center p-3 text-white pointer-events-none">
+                <div className="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-600 flex items-center justify-center text-amber-400 mb-1.5 shadow-md">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <span className="font-fun font-bold text-xs text-slate-200">Area Terkunci</span>
+                <span className="text-[10px] text-slate-300">Selesaikan Kamar Mandi lebih dulu</span>
+              </div>
+            )}
+          </div>
+
+          {/* ====================================================
+              3. DYNAMIC 3D LIGHTING & ATMOSPHERE (PAGI / SIANG / MALAM)
+              ==================================================== */}
+          
+          {/* PAGI: Soft golden morning sunbeam wash */}
+          {currentTime === 'pagi' && (
+            <div
+              className="absolute inset-0 pointer-events-none z-18 transition-opacity duration-700"
+              style={{
+                background:
+                  'linear-gradient(135deg, rgba(255, 215, 0, 0.16) 0%, rgba(255, 165, 0, 0.08) 50%, rgba(255, 255, 255, 0.02) 100%)',
+                mixBlendMode: 'screen',
+              }}
+            />
+          )}
+
+          {/* SIANG: Clear, crisp, bright balanced daylight */}
+          {currentTime === 'siang' && (
+            <div
+              className="absolute inset-0 pointer-events-none z-18 transition-opacity duration-700"
+              style={{
+                background: 'linear-gradient(to bottom, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0))',
+              }}
+            />
+          )}
+
+          {/* MALAM: Deep nighttime mood with cozy warm glowing lamps */}
+          {currentTime === 'malam' && (
+            <div className="absolute inset-0 pointer-events-none z-18 transition-opacity duration-700">
+              {/* Outside night ambient shade */}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'radial-gradient(ellipse at 500px 380px, rgba(15, 23, 42, 0.18) 0%, rgba(10, 15, 30, 0.65) 100%)',
+                }}
+              />
+
+              {/* Twinkling garden stars */}
+              <div className="absolute right-14 top-10 w-2 h-2 rounded-full bg-yellow-200 animate-pulse" />
+              <div className="absolute right-28 top-20 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              <div className="absolute right-20 top-36 w-1.5 h-1.5 rounded-full bg-amber-200 animate-ping" />
+              <div className="absolute right-12 bottom-36 w-2 h-2 rounded-full bg-white animate-pulse" />
+
+              {/* Warm interior glowing light cones over rooms */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '200px',
+                  top: '410px',
+                  width: '260px',
+                  height: '200px',
+                  background: 'radial-gradient(circle, rgba(255, 224, 130, 0.35) 0%, rgba(255, 179, 0, 0.1) 60%, transparent 80%)',
+                }}
+              />
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '170px',
+                  top: '140px',
+                  width: '240px',
+                  height: '180px',
+                  background: 'radial-gradient(circle, rgba(255, 236, 179, 0.35) 0%, rgba(255, 193, 7, 0.08) 60%, transparent 80%)',
+                }}
+              />
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '580px',
+                  top: '140px',
+                  width: '200px',
+                  height: '180px',
+                  background: 'radial-gradient(circle, rgba(255, 224, 130, 0.35) 0%, rgba(255, 179, 0, 0.08) 60%, transparent 80%)',
+                }}
+              />
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '580px',
+                  top: '410px',
+                  width: '200px',
+                  height: '180px',
+                  background: 'radial-gradient(circle, rgba(255, 224, 130, 0.35) 0%, rgba(255, 179, 0, 0.08) 60%, transparent 80%)',
+                }}
+              />
+              {/* Front Porch Carriage Lamp Glow */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '320px',
+                  top: '620px',
+                  width: '100px',
+                  height: '100px',
+                  background: 'radial-gradient(circle, rgba(255, 215, 0, 0.45) 0%, transparent 70%)',
+                }}
+              />
+              {/* Garden Lantern Glow on Lawn */}
+              <div
+                className="absolute rounded-full"
+                style={{
+                  left: '1000px',
+                  top: '380px',
+                  width: '140px',
+                  height: '140px',
+                  background: 'radial-gradient(circle, rgba(255, 230, 150, 0.3) 0%, transparent 70%)',
+                }}
+              />
+            </div>
+          )}
+
+          {/* ====================================================
+              4. INTERACTIVE ROOM HUBS & BADGES (ON UNIFIED HOUSE)
+              Positioned accurately without obscuring room fixtures.
+              Area 5 is placed entirely over the lawn and garden.
               ==================================================== */}
           
           {/* START MARKER */}
           <div
-            className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+            className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-22"
             style={{ left: `${WORLD_NODES.start.x}px`, top: `${WORLD_NODES.start.y}px` }}
           >
-            <div className="bg-emerald-600 text-white font-fun font-bold text-xs px-3 py-1 rounded-full shadow-md border-2 border-white flex items-center gap-1">
-              <span>🚪 START</span>
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-fun font-bold text-xs px-3.5 py-1.5 rounded-full shadow-xl border-2 border-white flex items-center gap-1.5">
+              <span>🚪 START (Pintu Masuk)</span>
             </div>
           </div>
 
@@ -857,7 +748,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
             stepNumber="4"
           />
 
-          {/* 5. TAMAN TRIGGER */}
+          {/* 5. TAMAN TRIGGER (Squarely positioned on the spacious lawn/garden) */}
           <RoomMapTrigger
             roomId="taman"
             coords={WORLD_NODES.taman}
@@ -880,8 +771,8 @@ export const HouseMap: React.FC<HouseMapProps> = ({
                 setLockedToast('Selesaikan 5 ruangan rumah terlebih dahulu untuk membuka Gerbang Selesai!');
               }
             }}
-            className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 transform hover:scale-105 z-20 ${
-              isAllComplete ? 'animate-bounce' : 'opacity-85'
+            className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 transform hover:scale-105 z-22 ${
+              isAllComplete ? 'animate-bounce' : 'opacity-90'
             }`}
             style={{ left: `${WORLD_NODES.complete.x}px`, top: `${WORLD_NODES.complete.y}px` }}
           >
@@ -898,7 +789,7 @@ export const HouseMap: React.FC<HouseMapProps> = ({
           </div>
 
           {/* ====================================================
-              AVATAR KIKI - STANDING DIRECTLY ON THE GAME WORLD MAP!
+              5. AVATAR KIKI - WALKING SEAMLESSLY IN THE 3D HOUSE!
               ==================================================== */}
           <div
             className={`absolute -translate-x-1/2 -translate-y-full z-25 pointer-events-none transition-all duration-700 ease-out ${
@@ -906,23 +797,23 @@ export const HouseMap: React.FC<HouseMapProps> = ({
             }`}
             style={{
               left: `${avatarCoords.x}px`,
-              top: `${avatarCoords.y - 10}px`,
+              top: `${avatarCoords.y - 12}px`,
             }}
           >
             {/* Friendly Speech Callout Bubble above Avatar */}
-            <div className="mb-1 -translate-y-2 bg-white text-slate-900 font-fun font-bold text-[11px] px-3 py-1 rounded-xl shadow-lg border-2 border-amber-400 whitespace-nowrap flex items-center gap-1.5 animate-pulse-soft">
+            <div className="mb-1.5 -translate-y-2 bg-white text-slate-900 font-fun font-bold text-[11px] px-3.5 py-1.5 rounded-2xl shadow-xl border-2 border-amber-400 whitespace-nowrap flex items-center gap-1.5 animate-pulse-soft">
               <span>👦 Kiki:</span>
               <span className="text-amber-700 font-extrabold">
                 {avatarSpeechText}
               </span>
             </div>
 
-            {/* Top-Down Visual Character Illustration */}
-            <div className="relative w-14 h-14 flex items-center justify-center filter drop-shadow-lg">
+            {/* 3D Visual Character Illustration */}
+            <div className="relative w-14 h-14 flex items-center justify-center filter drop-shadow-xl">
               {/* Character shadow on floor */}
-              <div className="absolute bottom-1 w-10 h-3 bg-black/35 rounded-full blur-[1px]" />
+              <div className="absolute bottom-1 w-11 h-3.5 bg-black/45 rounded-full blur-[1px]" />
               {/* Character Avatar Icon */}
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-400 via-orange-400 to-yellow-300 border-2 border-white flex items-center justify-center text-2xl shadow-md">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-amber-400 via-orange-400 to-yellow-300 border-2 border-white flex items-center justify-center text-3xl shadow-lg ring-2 ring-amber-300">
                 👦
               </div>
             </div>
@@ -936,9 +827,10 @@ export const HouseMap: React.FC<HouseMapProps> = ({
           ======================================================== */}
       <div className="bg-white/95 backdrop-blur-md border-t border-slate-200 py-2.5 px-4 z-20 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-600 gap-2">
         <div className="flex items-center gap-2">
+          <Footprints className="w-4 h-4 text-amber-600" />
           <span className="font-bold text-slate-800">Petunjuk Petualangan:</span>
           <span>
-            Sentuh ruangan yang berpendar untuk mengamati situasi dan menentukan Hak atau Kewajiban.
+            Sentuh ruangan 3D yang berpendar untuk mengamati situasi dan menentukan Hak atau Kewajiban.
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -970,7 +862,6 @@ interface RoomMapTriggerProps {
 }
 
 const RoomMapTrigger: React.FC<RoomMapTriggerProps> = ({
-  roomId,
   coords,
   isUnlocked,
   isExplored,
@@ -982,7 +873,7 @@ const RoomMapTrigger: React.FC<RoomMapTriggerProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 transform hover:scale-110 z-20 group ${
+      className={`absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 transform hover:scale-110 z-22 group ${
         isActive ? 'scale-105' : ''
       }`}
       style={{ left: `${coords.x}px`, top: `${coords.y}px` }}
@@ -994,11 +885,11 @@ const RoomMapTrigger: React.FC<RoomMapTriggerProps> = ({
 
       {/* Interactive Map Button Marker */}
       <div
-        className={`px-3.5 py-1.5 rounded-2xl shadow-xl border-2 flex items-center gap-2 font-fun font-bold text-xs sm:text-sm backdrop-blur-xs transition-colors ${
+        className={`px-3.5 py-1.5 rounded-2xl shadow-2xl border-2 flex items-center gap-2 font-fun font-bold text-xs sm:text-sm backdrop-blur-md transition-all ${
           isExplored
-            ? 'bg-emerald-500 text-white border-white ring-2 ring-emerald-300'
+            ? 'bg-emerald-500/95 text-white border-white ring-2 ring-emerald-300'
             : isActive
-            ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white border-white ring-4 ring-amber-300 shadow-amber-400/60'
+            ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white border-white ring-4 ring-amber-300 shadow-amber-400/70'
             : isUnlocked
             ? 'bg-white/95 text-slate-800 border-blue-400 hover:bg-blue-50'
             : 'bg-slate-800/90 text-slate-400 border-slate-600 opacity-80'
@@ -1016,7 +907,7 @@ const RoomMapTrigger: React.FC<RoomMapTriggerProps> = ({
 
         <div className="flex flex-col text-left leading-tight">
           <span className="text-[9px] uppercase tracking-wider opacity-80">
-            Area {stepNumber}
+            AREA {stepNumber}
           </span>
           <span className="text-xs font-extrabold">{roomName}</span>
         </div>

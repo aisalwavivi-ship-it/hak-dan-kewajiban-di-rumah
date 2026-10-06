@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { ambientAudio } from './ambientAudioManager';
+
 // Web Audio API tone generator for child-friendly feedback
 class SoundManager {
   private ctx: AudioContext | null = null;
@@ -19,6 +21,9 @@ class SoundManager {
 
   // Pleasant click sound
   public playClick() {
+    if (typeof window !== 'undefined') {
+      ambientAudio.resumeIfNeeded();
+    }
     if (this.isMuted) return;
     try {
       this.init();
@@ -47,7 +52,7 @@ class SoundManager {
     }
   }
 
-  // Cheerful chime on correct answer
+  // Pleasant, cheerful soft chime / "ting" on correct answer
   public playSuccess() {
     if (this.isMuted) return;
     try {
@@ -57,24 +62,27 @@ class SoundManager {
         this.ctx.resume();
       }
 
-      const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6 (cheerful arpeggio)
-      notes.forEach((freq, idx) => {
+      const now = this.ctx.currentTime;
+      // Sweet harmonious dual-bell chime (C5 & G5 & C6)
+      const freqs = [523.25, 783.99, 1046.5];
+      freqs.forEach((freq, idx) => {
         if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-        const start = this.ctx.currentTime + idx * 0.09;
+        const start = now + idx * 0.05;
 
-        osc.type = 'triangle';
+        osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, start);
 
-        gain.gain.setValueAtTime(0.18, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.12 / freqs.length, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.38);
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
 
         osc.start(start);
-        osc.stop(start + 0.35);
+        osc.stop(start + 0.38);
       });
     } catch {
       // Silently catch
@@ -149,7 +157,7 @@ class SoundManager {
     }
   }
 
-  // Gentle thought/hint sound
+  // Gentle, neutral soft thought sound (never punitive or scary)
   public playGentleHint() {
     if (this.isMuted) return;
     try {
@@ -159,24 +167,27 @@ class SoundManager {
         this.ctx.resume();
       }
 
-      const notes = [440, 554.37]; // A4, C#5
+      const now = this.ctx.currentTime;
+      // Two warm, soft neutral notes (C4, E4) with smooth natural decay
+      const notes = [261.63, 329.63];
       notes.forEach((freq, idx) => {
         if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-        const start = this.ctx.currentTime + idx * 0.12;
+        const start = now + idx * 0.1;
 
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, start);
 
-        gain.gain.setValueAtTime(0.12, start);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(0.06, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
 
         osc.connect(gain);
         gain.connect(this.ctx.destination);
 
         osc.start(start);
-        osc.stop(start + 0.28);
+        osc.stop(start + 0.22);
       });
     } catch {
       // Silently catch
@@ -192,6 +203,16 @@ class SoundManager {
       utterance.lang = 'id-ID';
       utterance.rate = 0.95; // Slightly slower, very clear for 3rd graders
       utterance.pitch = 1.1; // Friendly tone
+
+      utterance.onstart = () => {
+        ambientAudio.duck(true);
+      };
+      utterance.onend = () => {
+        ambientAudio.duck(false);
+      };
+      utterance.onerror = () => {
+        ambientAudio.duck(false);
+      };
 
       const voices = window.speechSynthesis.getVoices();
       const idVoice = voices.find((v) => v.lang.startsWith('id') || v.lang.startsWith('ind'));
@@ -209,6 +230,7 @@ class SoundManager {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
+    ambientAudio.duck(false);
   }
 }
 

@@ -13,6 +13,7 @@ import { RoomModal } from './components/RoomModal';
 import { MisiHandbookModal } from './components/MisiHandbookModal';
 import { StoryReflectionModal } from './components/StoryReflectionModal';
 import { sounds } from './utils/soundEffects';
+import { ambientAudio } from './utils/ambientAudioManager';
 
 const INITIAL_PROGRESS: UserProgress = {
   exploredRooms: {
@@ -36,6 +37,22 @@ export default function App() {
   const [hasShownReflection, setHasShownReflection] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [mapResetKey, setMapResetKey] = useState<number>(0);
+  const [mapZoom, setMapZoom] = useState<number>(1.0);
+
+  const handleZoomIn = () => {
+    sounds.playClick();
+    setMapZoom((z) => Math.min(1.85, Number((z + 0.2).toFixed(2))));
+  };
+
+  const handleZoomOut = () => {
+    sounds.playClick();
+    setMapZoom((z) => Math.max(1.0, Number((z - 0.2).toFixed(2))));
+  };
+
+  const handleResetZoom = () => {
+    sounds.playClick();
+    setMapZoom(1.0);
+  };
 
   // Load progress from localStorage if available
   const [progress, setProgress] = useState<UserProgress>(() => {
@@ -137,15 +154,21 @@ export default function App() {
 
     // 7. Increment key to force HouseMap to remount cleanly with default zoom, centering, and avatar at START
     setMapResetKey((prev) => prev + 1);
+    setMapZoom(1.0);
 
     // 8. Audio feedback
     sounds.playClick();
-    sounds.speakIndonesian('Permainan diulang dari awal. Kiki kembali ke titik Start.');
+    sounds.speakIndonesian('Petualangan diulang dari awal. Kiki kembali ke titik Start.');
   };
 
   const handleResetProgress = () => {
     resetGame();
   };
+
+  // Dynamically update context-appropriate background ambient audio
+  useEffect(() => {
+    ambientAudio.update(activeRoomId, currentTime, isMuted);
+  }, [currentView, activeRoomId, currentTime, isMuted]);
 
   const handleToggleMute = () => {
     setIsMuted((prev) => {
@@ -154,6 +177,7 @@ export default function App() {
       if (next) {
         sounds.stopSpeaking();
       }
+      ambientAudio.update(activeRoomId, currentTime, next);
       return next;
     });
   };
@@ -173,6 +197,8 @@ export default function App() {
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
         completedRoomsCount={completedRoomsCount}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
       />
 
       {/* Main Content Area */}
@@ -187,6 +213,8 @@ export default function App() {
             onSelectRoom={handleSelectRoom}
             progress={progress}
             onOpenCompleteModal={() => setIsReflectionOpen(true)}
+            zoomMultiplier={mapZoom}
+            onResetZoom={handleResetZoom}
           />
         )}
       </main>
@@ -225,7 +253,7 @@ export default function App() {
       {currentView === 'story' && (
         <footer className="py-4 border-t border-amber-200/50 bg-white/60 text-center text-xs text-slate-500">
           <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <span>Pendidikan Pancasila Kelas III SD · Hak dan Kewajiban Anak di Rumah</span>
+            <span>KIKI'S HOME QUEST · Jelajah Hak & Kewajiban di Rumah · Pendidikan Pancasila Kelas III SD</span>
             <span>Eksplorasi Pembelajaran Interaktif & Pemecahan Masalah</span>
           </div>
         </footer>
